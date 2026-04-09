@@ -138,6 +138,14 @@ def run(args: argparse.Namespace, cfg: Dict[str, Any]) -> None:
     frame_idx = 0
     print("\n▶  Processing …\n")
 
+    # Tracking ledger — aggregates per-ID results across all frames
+    # { track_id: { "class": str, "severity": str, "confidence": float,
+    #               "frames_seen": int, "first_frame": int, "last_frame": int } }
+    track_ledger: Dict[int, Dict[str, Any]] = {}
+
+    # Severity ranking for keeping the worst case per track
+    severity_rank = {"Minor": 1, "Moderate": 2, "Severe": 3}
+
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -161,26 +169,31 @@ def run(args: argparse.Namespace, cfg: Dict[str, Any]) -> None:
         parcels = [d for d in detections if d.class_id == parcel_cls]
         damages = [d for d in detections if d.class_id == damage_cls]
 
-        # --- Draw intact parcels ---
+        # --- Record intact parcels in ledger ---
         for p in parcels:
             draw_parcel(frame, p)
+            if p.track_id is not None:
+                if p.track_id not in track_ledger:
+                    track_ledger[p.track_id] = {
+                        "class": "package", "status": "Intact",
+                        "severity": "None", "confidence": p.confidence,
+                        "frames_seen": 0, "first_frame": frame_idx, "last_frame": frame_idx,
+                    }
+                entry = track_ledger[p.track_id]
+                entry["frames_seen"] += 1
+                entry["last_frame"] = frame_idx
+                entry["confidence"] = max(entry["confidence"], p.confidence)
 
         # --- Severity analysis & draw damages ---
-        # Strategy: If a Damaged box overlaps a package box, use area ratio.
-        # If Damaged is detected alone (common — dataset uses mutually exclusive
-        # labels), estimate severity from detection confidence instead.
         for dmg in damages:
             parent = find_parent_parcel(dmg, parcels, overlap_threshold=0.3)
             if parent is not None:
-                # Case 1: Both Damaged region + parent package detected
                 severity, ratio = classify_severity(
                     dmg.area, parent.area,
                     minor_max=minor_max,
                     moderate_max=moderate_max,
                 )
             else:
-                # Case 2: Only Damaged detected (whole-box label)
-                # Map confidence to severity — higher confidence = more obvious damage
                 conf = dmg.confidence
                 if conf >= 0.75:
                     severity, ratio = "Severe", conf
@@ -190,6 +203,23 @@ def run(args: argparse.Namespace, cfg: Dict[str, Any]) -> None:
                     severity, ratio = "Minor", conf
 
             draw_damage(frame, dmg, severity, ratio)
+
+            # Record damage in ledger
+            if dmg.track_id is not None:
+                if dmg.track_id not in track_ledger:
+                    track_ledger[dmg.track_id] = {
+                        "class": "Damaged", "status": "Damaged",
+                        "severity": severity, "confidence": dmg.confidence,
+                        "frames_seen": 0, "first_frame": frame_idx, "last_frame": frame_idx,
+                    }
+                entry = track_ledger[dmg.track_id]
+                entry["frames_seen"] += 1
+                entry["last_frame"] = frame_idx
+                entry["confidence"] = max(entry["confidence"], dmg.confidence)
+                # Keep the worst severity across frames
+                if severity_rank.get(severity, 0) > severity_rank.get(entry["severity"], 0):
+                    entry["severity"] = severity
+                entry["status"] = "Damaged"
 
         # --- HUD overlay ---
         draw_hud(frame, frame_idx, len(parcels), len(damages))
@@ -217,7 +247,64 @@ def run(args: argparse.Namespace, cfg: Dict[str, Any]) -> None:
 
     print(f"\n✅  Done — processed {frame_idx} frames.")
     if writer is not None:
-        print(f"    Output saved to: {Path(args.output).resolve()}\n")
+        print(f"    Output saved to: {Path(args.output).resolve()}")
+
+    # ── 6. Final Verdict Report ─────────────────────────────────────
+    # Count frames where damage / intact parcels were detected
+    total_damaged_frames = sum(1 for v in track_ledger.values()
+                               if v["status"] == "Damaged")
+    total_intact_frames  = sum(1 for v in track_ledger.values()
+                               if v["status"] == "Intact")
+    total_damage_frame_hits = sum(v["frames_seen"] for v in track_ledger.values()
+                                  if v["status"] == "Damaged")
+    total_intact_frame_hits = sum(v["frames_seen"] for v in track_ledger.values()
+                                  if v["status"] == "Intact")
+
+    # Find peak confidence and worst severity
+    peak_conf = 0.0
+    worst_severity = "None"
+    for v in track_ledger.values():
+        if v["status"] == "Damaged":
+            peak_conf = max(peak_conf, v["confidence"])
+            if severity_rank.get(v["severity"], 0) > severity_rank.get(worst_severity, 0):
+                worst_severity = v["severity"]
+
+    # Determine overall verdict via frame-count majority
+    is_damaged = total_damage_frame_hits > total_intact_frame_hits
+
+    print("\n" + "=" * 70)
+    print("  DAMAGE ASSESSMENT REPORT")
+    print("=" * 70)
+    print(f"  Frames analyzed       : {frame_idx}")
+    print(f"  Frames with damage    : {total_damage_frame_hits}")
+    print(f"  Frames intact         : {total_intact_frame_hits}")
+    print(f"  Peak confidence       : {peak_conf:.1%}")
+    print("-" * 70)
+
+    if is_damaged:
+        print(f"  VERDICT : DAMAGED")
+        print(f"  Severity: {worst_severity}")
+        print(f"  Action  : FLAG FOR INSPECTION")
+    else:
+        print(f"  VERDICT : NOT DAMAGED")
+        print(f"  Action  : CLEAR FOR DELIVERY")
+
+    print("=" * 70)
+
+    # Save CSV report
+    report_path = Path(args.output).parent / "report.csv"
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write("metric,value\n")
+        f.write(f"frames_analyzed,{frame_idx}\n")
+        f.write(f"frames_with_damage,{total_damage_frame_hits}\n")
+        f.write(f"frames_intact,{total_intact_frame_hits}\n")
+        f.write(f"peak_confidence,{peak_conf:.4f}\n")
+        f.write(f"verdict,{'DAMAGED' if is_damaged else 'NOT DAMAGED'}\n")
+        f.write(f"severity,{worst_severity if is_damaged else 'None'}\n")
+    print(f"\n  Report saved to: {report_path.resolve()}\n")
+
+    if not track_ledger:
+        print("\n  No parcels detected in the video.\n")
 
 
 # ── Entry point ──────────────────────────────────────────────────────

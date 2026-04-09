@@ -281,15 +281,51 @@ python main.py \
 
 > Press **`q`** during live preview to stop processing early.
 
-### 6.4 Step 3 — View Results
+### 6.4 Step 3 — Run Inference on Images
+
+To quickly test the model on a **single image or folder of images** without video:
+
+```bash
+# Single image
+python -c "from ultralytics import YOLO; model = YOLO('runs/detect/train_merged/weights/best.pt'); model.predict('path/to/image.jpg', save=True, conf=0.35)"
+
+# Folder of images
+python -c "from ultralytics import YOLO; model = YOLO('runs/detect/train_merged/weights/best.pt'); model.predict('path/to/images/', save=True, conf=0.35)"
+
+# Test on validation set
+python -c "from ultralytics import YOLO; model = YOLO('runs/detect/train_merged/weights/best.pt'); model.predict('datasets/valid/images', save=True, conf=0.35)"
+```
+
+Annotated results are saved to `runs/detect/predict/`. Each output image will show bounding boxes with class labels (`Damaged` / `package`) and confidence scores.
+
+### 6.5 Step 4 — View Results
 
 The output video contains:
 
 - **Green bounding boxes** around detected parcels with track IDs.
-- **Color-coded damage boxes** with severity labels and damage-to-parcel area ratios.
+- **Color-coded damage boxes** with severity labels and confidence scores.
 - **Heads-up display (HUD)** showing frame count, parcel count, and damage count in real-time.
 
-### 6.5 (Optional) Retrain the Model
+After processing completes, a **Damage Assessment Report** is printed to the terminal:
+
+```
+======================================================================
+  DAMAGE ASSESSMENT REPORT
+======================================================================
+  Frames analyzed       : 239
+  Frames with damage    : 300
+  Frames intact         : 7
+  Peak confidence       : 90.0%
+----------------------------------------------------------------------
+  VERDICT : DAMAGED
+  Severity: Severe
+  Action  : FLAG FOR INSPECTION
+======================================================================
+```
+
+A CSV summary is also saved to `output/report.csv`.
+
+### 6.6 (Optional) Retrain the Model
 
 To retrain on a new or updated dataset:
 
