@@ -161,21 +161,33 @@ def run(args: argparse.Namespace, cfg: Dict[str, Any]) -> None:
         parcels = [d for d in detections if d.class_id == parcel_cls]
         damages = [d for d in detections if d.class_id == damage_cls]
 
-        # --- Draw parcels ---
+        # --- Draw intact parcels ---
         for p in parcels:
             draw_parcel(frame, p)
 
         # --- Severity analysis & draw damages ---
+        # Strategy: If a Damaged box overlaps a package box, use area ratio.
+        # If Damaged is detected alone (common — dataset uses mutually exclusive
+        # labels), estimate severity from detection confidence instead.
         for dmg in damages:
-            parent = find_parent_parcel(dmg, parcels, overlap_threshold=0.5)
+            parent = find_parent_parcel(dmg, parcels, overlap_threshold=0.3)
             if parent is not None:
+                # Case 1: Both Damaged region + parent package detected
                 severity, ratio = classify_severity(
                     dmg.area, parent.area,
                     minor_max=minor_max,
                     moderate_max=moderate_max,
                 )
             else:
-                severity, ratio = "Unknown", 0.0
+                # Case 2: Only Damaged detected (whole-box label)
+                # Map confidence to severity — higher confidence = more obvious damage
+                conf = dmg.confidence
+                if conf >= 0.75:
+                    severity, ratio = "Severe", conf
+                elif conf >= 0.50:
+                    severity, ratio = "Moderate", conf
+                else:
+                    severity, ratio = "Minor", conf
 
             draw_damage(frame, dmg, severity, ratio)
 

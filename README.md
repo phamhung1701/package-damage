@@ -237,7 +237,7 @@ package-damage/
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/package-damage.git
+git clone https://github.com/phamhung1701/package-damage.git
 cd package-damage
 
 # Create and activate a virtual environment
