@@ -58,3 +58,5 @@ data/videos/
 # ── Misc ────────────────────────────────────────────────────
 *.log
 _check_best.py
+yolov8n.pt
+datasets/data.yaml
