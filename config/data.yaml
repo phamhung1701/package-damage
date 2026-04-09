@@ -1,0 +1,12 @@
+# ============================================================
+# YOLOv8 Dataset Config  (merged dataset — auto-generated)
+# ============================================================
+
+path: ../datasets
+train: train/images
+val: valid/images
+
+nc: 2
+names:
+  0: Damaged
+  1: package

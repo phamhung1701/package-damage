@@ -1,0 +1,41 @@
+# ============================================================
+# Global Project Settings
+# ============================================================
+
+# ── Model ────────────────────────────────────────────────────
+model:
+  weights: "runs/detect/train_merged/weights/best.pt"  # path to trained weights
+  confidence: 0.35                                # minimum detection confidence
+  iou_threshold: 0.45                             # NMS IoU threshold
+  imgsz: 640                                      # inference image size
+  device: ""                                      # "" = auto (GPU if available)
+
+# ── Tracker ──────────────────────────────────────────────────
+tracker:
+  config: "bytetrack.yaml"                        # Ultralytics built-in tracker
+
+# ── Class IDs (must match data.yaml) ─────────────────────────
+classes:
+  damage: 0
+  parcel: 1
+
+# ── Severity thresholds (damage_area / parcel_area) ──────────
+severity:
+  minor_max: 0.10       # 0% – 10%   → Minor
+  moderate_max: 0.25    # 10% – 25%  → Moderate
+                        # > 25%      → Severe
+
+# ── Video I/O ────────────────────────────────────────────────
+video:
+  input: "data/videos/sample.mp4"
+  output: "output/result.mp4"
+  codec: "mp4v"
+  show_live: true                                 # display frames during processing
+
+# ── Visualisation ────────────────────────────────────────────
+vis:
+  bbox_thickness: 2
+  font_scale: 0.6
+  parcel_color: [0, 255, 0]      # BGR green
+  damage_color: [0, 0, 255]      # BGR red
+  text_color: [255, 255, 255]    # BGR white
