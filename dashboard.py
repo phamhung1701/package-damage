@@ -6,6 +6,12 @@ KPIs, zone-level liability breakdowns, and a raw data log — suitable for
 a capstone presentation demonstrating the business value of the AI
 detection system.
 
+Deployment
+----------
+    Local:            streamlit run dashboard.py
+    Streamlit Cloud:  Deploys directly from GitHub — auto-seeds demo data
+                      if no database is found.
+
 Usage
 -----
     streamlit run dashboard.py
@@ -14,8 +20,12 @@ Usage
 
 from __future__ import annotations
 
+import random
 import sqlite3
+import string
 import sys
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -53,17 +63,71 @@ ZONE_ORDER = ["inbound", "storage", "outbound"]
 
 
 # ═════════════════════════════════════════════════════════════════════════
+#  Demo Data Seeder  (for Streamlit Cloud / first-run)
+# ═════════════════════════════════════════════════════════════════════════
+#
+#  When deployed to Streamlit Community Cloud the SQLite DB won't exist
+#  (it's in .gitignore).  This function creates it with realistic sample
+#  data so the dashboard is fully functional as a standalone demo.
+# ═════════════════════════════════════════════════════════════════════════
+
+ZONES = ["inbound", "storage", "outbound"]
+STATUSES = ["Normal", "Minor", "Moderate", "Severe"]
+
+# Weighted probabilities per zone — storage intentionally has the highest
+# damage rate to demonstrate the liability tracking concept.
+ZONE_STATUS_WEIGHTS = {
+    "inbound":  [0.60, 0.20, 0.12, 0.08],
+    "storage":  [0.35, 0.25, 0.22, 0.18],
+    "outbound": [0.70, 0.15, 0.10, 0.05],
+}
+
+
+def _generate_mock_id() -> str:
+    return f"PKG-VN-{''.join(random.choices(string.digits, k=6))}"
+
+
+def _seed_demo_database(db_path: str, count: int = 150) -> None:
+    """Create the DB and populate it with realistic demo records."""
+    conn = sqlite3.connect(db_path)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS PackageHistory (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            PackageID     TEXT    NOT NULL,
+            Zone          TEXT    NOT NULL,
+            Timestamp     TEXT    NOT NULL,
+            Final_Status  TEXT    NOT NULL
+        )
+    """)
+    now = datetime.now(timezone.utc)
+    rows = []
+    for _ in range(count):
+        zone = random.choice(ZONES)
+        status = random.choices(STATUSES, weights=ZONE_STATUS_WEIGHTS[zone], k=1)[0]
+        ts = now - timedelta(days=random.uniform(0, 7), hours=random.uniform(0, 12),
+                             minutes=random.uniform(0, 60))
+        rows.append((_generate_mock_id(), zone, ts.isoformat(), status))
+    conn.executemany(
+        "INSERT INTO PackageHistory (PackageID, Zone, Timestamp, Final_Status) VALUES (?, ?, ?, ?)",
+        rows,
+    )
+    conn.commit()
+    conn.close()
+
+
+# ═════════════════════════════════════════════════════════════════════════
 #  Data Layer
 # ═════════════════════════════════════════════════════════════════════════
 
 @st.cache_resource
 def get_connection() -> sqlite3.Connection:
-    """Open a persistent connection to the SQLite DB (shared across reruns)."""
+    """
+    Open a persistent connection to the SQLite DB (shared across reruns).
+    If the DB doesn't exist (e.g. on Streamlit Cloud), auto-seed demo data.
+    """
     db = Path(DB_PATH)
     if not db.exists():
-        st.error(f"Database not found: **{db.resolve()}**")
-        st.info("Start the liability tracker first to create the database.")
-        st.stop()
+        _seed_demo_database(str(db))
     return sqlite3.connect(str(db), check_same_thread=False)
 
 
@@ -172,7 +236,6 @@ with col_auto:
 
 if auto_refresh:
     # Streamlit's st.rerun inside a timer fragment — polls the DB
-    import time
     st.caption("⏱ Auto-refresh active — dashboard updates every 10 seconds")
 
 st.divider()
