@@ -15,3 +15,8 @@ tqdm>=4.65.0                # Progress bars
 matplotlib>=3.7.0           # Result visualisation & training curves
 Pillow>=10.0.0              # Image format support
 lap>=0.4.0                  # Linear Assignment Problem solver (ByteTrack dep)
+
+# Dashboard
+streamlit>=1.30.0            # Interactive web dashboard
+plotly>=5.18.0               # Rich interactive charts
+pandas>=2.0.0                # Data manipulation (used by dashboard)

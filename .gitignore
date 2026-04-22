@@ -55,6 +55,12 @@ output/
 # ── Data / Videos (user-provided) ──────────────────────────
 data/videos/
 
+# ── Database (generated at runtime) ─────────────────────────
+*.db
+
+# ── New dataset staging area ────────────────────────────────
+new_dataset/
+
 # ── Misc ────────────────────────────────────────────────────
 *.log
 _check_best.py
